@@ -1,151 +1,512 @@
-{
-  "name": "issue-refiner-worker",
-  "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
-  },
-  "devDependencies": {
-    "wrangler": "^3.0.0"
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Open Issue 整理助手</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f5f6fa;
+  color: #2d3436;
+  min-height: 100vh;
+}
+.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+/* Header */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 24px; background: #fff; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 20px;
+}
+.header h1 { font-size: 20px; font-weight: 600; color: #1a1a2e; }
+.header h1 span { color: #6c5ce7; }
+.header-subtitle { font-size: 13px; color: #636e72; margin-top: 2px; }
+.header-actions { display: flex; gap: 8px; }
+.btn-icon {
+  width: 36px; height: 36px; border: none; border-radius: 8px;
+  background: #f0f0f5; cursor: pointer; display: flex;
+  align-items: center; justify-content: center; color: #636e72;
+  transition: all 0.2s;
+}
+.btn-icon:hover { background: #dfe6e9; color: #2d3436; }
+
+/* Input Area */
+.input-card {
+  background: #fff; border-radius: 12px; padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 16px;
+}
+.input-card textarea {
+  width: 100%; min-height: 80px; padding: 12px 16px;
+  border: 1px solid #dfe6e9; border-radius: 8px; font-size: 14px;
+  font-family: inherit; resize: vertical; transition: border-color 0.2s;
+  outline: none; line-height: 1.6;
+}
+.input-card textarea:focus { border-color: #6c5ce7; box-shadow: 0 0 0 3px rgba(108,92,231,0.1); }
+
+/* Buttons */
+.toolbar { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px; border: none; border-radius: 8px;
+  font-size: 14px; font-family: inherit; cursor: pointer;
+  transition: all 0.2s; font-weight: 500;
+}
+.btn-primary { background: #6c5ce7; color: #fff; }
+.btn-primary:hover { background: #5a4bd1; }
+.btn-primary:disabled { background: #b2bec3; cursor: not-allowed; }
+.btn-outline { background: #fff; color: #636e72; border: 1px solid #dfe6e9; }
+.btn-outline:hover { background: #f8f9fa; border-color: #b2bec3; }
+.btn-danger { background: #fff; color: #d63031; border: 1px solid #fab1a0; }
+.btn-danger:hover { background: #fff5f5; }
+.btn-danger:disabled { color: #b2bec3; border-color: #dfe6e9; cursor: not-allowed; }
+
+/* Table */
+.table-card {
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden;
+}
+.table-card table { width: 100%; border-collapse: collapse; }
+.table-card th {
+  padding: 12px 16px; text-align: left; font-size: 12px;
+  font-weight: 600; color: #636e72; background: #fafafa;
+  border-bottom: 1px solid #dfe6e9; white-space: nowrap;
+  user-select: none;
+}
+.table-card td { padding: 10px 16px; border-bottom: 1px solid #f0f0f5; font-size: 13px; vertical-align: top; }
+.table-card tr:last-child td { border-bottom: none; }
+.table-card tr:hover td { background: #fafafa; }
+.col-checkbox { width: 40px; text-align: center; }
+.col-title { width: 18%; }
+.col-desc { width: 35%; }
+.col-assignee { width: 12%; }
+.col-deadline { width: 12%; }
+.col-actions { width: 40px; text-align: center; }
+
+.cell-text {
+  cursor: text; padding: 4px 6px; border-radius: 4px;
+  min-height: 20px; transition: background 0.2s;
+  word-break: break-word;
+}
+.cell-text:hover { background: #f0f0f5; }
+.cell-input {
+  width: 100%; padding: 4px 6px; border: 1px solid #6c5ce7;
+  border-radius: 4px; font-size: 13px; font-family: inherit;
+  outline: none; background: #fff;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center; padding: 60px 20px; color: #b2bec3;
+}
+.empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.4; }
+.empty-state p { font-size: 14px; }
+
+/* Footer */
+.table-footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: #fafafa; border-top: 1px solid #dfe6e9;
+  font-size: 13px; color: #636e72;
+}/* Responsive */
+@media (max-width: 768px) {
+  .container { padding: 12px; }
+  .header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
+  .header h1 { font-size: 17px; }
+  .table-card { overflow-x: auto; }
+  .table-card table { min-width: 600px; }
+  .modal { width: 95vw; }
+  .col-desc { min-width: 180px; }
+  .col-title { min-width: 120px; }
+}
+
+/* Loading overlay */
+.loading-overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3); z-index: 999;
+  align-items: center; justify-content: center;
+}
+.loading-overlay.active { display: flex; }
+.loading-box {
+  background: #fff; border-radius: 12px; padding: 30px 40px;
+  text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+}
+.spinner {
+  width: 36px; height: 36px; border: 3px solid #dfe6e9;
+  border-top-color: #6c5ce7; border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-box p { font-size: 14px; color: #636e72; }
+
+/* Modal */
+.modal-overlay {
+  display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4); z-index: 1000;
+  align-items: center; justify-content: center;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: #fff; border-radius: 12px; width: 440px; max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid #dfe6e9;
+}
+.modal-header h2 { font-size: 16px; font-weight: 600; }
+.modal-body { padding: 20px; }
+.form-group { margin-bottom: 16px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-group label {
+  display: block; font-size: 13px; font-weight: 500;
+  color: #2d3436; margin-bottom: 6px;
+}
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 8px 12px; border: 1px solid #dfe6e9;
+  border-radius: 8px; font-size: 14px; font-family: inherit; outline: none;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  border-color: #6c5ce7; box-shadow: 0 0 0 3px rgba(108,92,231,0.1);
+}
+.form-group textarea { min-height: 60px; resize: vertical; }
+.modal-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 20px; border-top: 1px solid #dfe6e9;
+}
+
+/* Toast */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #2d3436; color: #fff; padding: 10px 20px; border-radius: 8px;
+  font-size: 13px; z-index: 2000; opacity: 0; transition: opacity 0.3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+</style>
+</head>
+<body>  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div>
+        <h1><span>Issue</span> 整理助手</h1>
+        <div class="header-subtitle">描述问题 &rarr; AI 提炼 &rarr; 一键整理</div>
+      </div>
+      <div class="header-actions">
+        <button class="btn-icon" id="settingsBtn" title="设置" onclick="openSettings()" data-lucide="settings"></button>
+      </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="input-card">
+      <textarea id="issueInput" placeholder="描述你的 issue...&#10;&#10;例如：服务器最近经常 502，需要排查原因并修复，这个事情交给张三处理，下周五之前弄好。"></textarea>
+      <div class="toolbar">
+        <button class="btn btn-primary" id="refineBtn" onclick="refineIssue()">
+          <i data-lucide="sparkles"></i> AI 提炼并添加
+        </button>
+        <button class="btn btn-outline" onclick="exportCSV()">
+          <i data-lucide="download"></i> 导出 CSV
+        </button>
+        <button class="btn btn-outline" onclick="clearAll()" id="clearBtn">
+          <i data-lucide="trash-2"></i> 清空
+        </button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-card">
+      <div id="tableContainer">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-checkbox"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+              <th class="col-title">标题</th>
+              <th class="col-desc">专业描述</th>
+              <th class="col-assignee">负责人</th>
+              <th class="col-deadline">截止时间</th>
+              <th class="col-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="issueTableBody">
+          </tbody>
+        </table>
+        <div class="empty-state" id="emptyState">
+          <i data-lucide="inbox"></i>
+          <p>还没有 issue，在上方描述一个问题开始吧</p>
+        </div>
+      </div>
+      <div class="table-footer" id="tableFooter">
+        <span id="statsText">共 0 条 issue</span>
+        <button class="btn btn-danger" id="batchDeleteBtn" onclick="batchDelete()" disabled>
+          <i data-lucide="x"></i> 删除选中
+        </button>
+      </div>
+    </div>
+  </div>  <!-- Loading Overlay -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <p>AI 正在提炼...</p>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>设置</h2>
+        <button class="btn-icon" onclick="closeSettings()"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Worker 服务地址</label>
+          <input type="text" id="workerUrl" placeholder="https://your-worker.your-name.workers.dev" />
+          <div style="font-size:12px;color:#636e72;margin-top:4px;">你部署的 Cloudflare Worker 地址</div>
+        </div>
+        <div class="form-group">
+          <label>模型</label>
+          <input type="text" id="modelName" placeholder="gpt-4o-mini" />
+        </div>
+        <div class="form-group">
+          <label>API 地址（可选）</label>
+          <input type="text" id="apiBase" placeholder="https://api.openai.com/v1" />
+          <div style="font-size:12px;color:#636e72;margin-top:4px;">默认为 OpenAI，支持任何 OpenAI 兼容接口</div>
+        </div>
+        <div class="form-group">
+          <label>自定义提示词（可选）</label>
+          <textarea id="customPrompt" placeholder="默认提示词已能满足大部分场景，只需要时再自定义"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeSettings()">取消</button>
+        <button class="btn btn-primary" onclick="saveSettings()">保存设置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+<script>
+// ====== Data Layer ======
+let issues = [];
+let settings = {};
+
+function loadData() {
+  try { issues = JSON.parse(localStorage.getItem('issues')) || []; } catch { issues = []; }
+  try { settings = JSON.parse(localStorage.getItem('issueSettings')) || {}; } catch { settings = {}; }
+}
+
+function saveData() { localStorage.setItem('issues', JSON.stringify(issues)); }
+function saveSettingsToStorage() { localStorage.setItem('issueSettings', JSON.stringify(settings)); }
+
+// ====== Settings ======
+function openSettings() {
+  document.getElementById('workerUrl').value = settings.workerUrl || '';
+  document.getElementById('modelName').value = settings.model || '';
+  document.getElementById('apiBase').value = settings.apiBase || '';
+  document.getElementById('customPrompt').value = settings.customPrompt || '';
+  document.getElementById('settingsModal').classList.add('active');
+  lucide.createIcons();
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('active');
+}
+
+function saveSettings() {
+  settings.workerUrl = document.getElementById('workerUrl').value.trim();
+  settings.model = document.getElementById('modelName').value.trim();
+  settings.apiBase = document.getElementById('apiBase').value.trim();
+  settings.customPrompt = document.getElementById('customPrompt').value.trim();
+  saveSettingsToStorage();
+  closeSettings();
+  showToast('设置已保存');
+}
+
+// ====== AI Refine ======
+async function refineIssue() {
+  const input = document.getElementById('issueInput');
+  const text = input.value.trim();
+  if (!text) { showToast('请先描述你的 issue'); return; }
+
+  if (!settings.workerUrl) { showToast('请先在设置中配置 Worker 地址'); return; }
+
+  const refineBtn = document.getElementById('refineBtn');
+  refineBtn.disabled = true;
+  document.getElementById('loadingOverlay').classList.add('active');
+
+  try {
+    const response = await fetch(settings.workerUrl + '/api/refine', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        description: text,
+        model: settings.model || undefined,
+        api_base: settings.apiBase || undefined,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      showToast(data.error || '请求失败');
+      return;
+    }
+
+    const issue = {
+      id: Date.now().toString(36),
+      title: data.title || '未命名 Issue',
+      description: data.description || text,
+      assignee: data.assignee || '待分配',
+      deadline: data.deadline || '待确定',
+      createdAt: new Date().toISOString(),
+    };
+
+    issues.unshift(issue);
+    saveData();
+    renderTable();
+    input.value = '';
+    showToast('Issue 已添加');
+
+  } catch (err) {
+    showToast('网络错误，请检查 Worker 地址是否正确');
+  } finally {
+    refineBtn.disabled = false;
+    document.getElementById('loadingOverlay').classList.remove('active');
+  }
+}// ====== Table Rendering ======
+function renderTable() {
+  const tbody = document.getElementById('issueTableBody');
+  const emptyState = document.getElementById('emptyState');
+  const statsText = document.getElementById('statsText');
+  document.getElementById('selectAll').checked = false;
+  document.getElementById('batchDeleteBtn').disabled = true;
+
+  if (issues.length === 0) {
+    tbody.innerHTML = '';
+    emptyState.style.display = 'block';
+    statsText.textContent = '共 0 条 issue';
+    return;
+  }
+
+  emptyState.style.display = 'none';
+  statsText.textContent = '共 ' + issues.length + ' 条 issue';
+
+  tbody.innerHTML = issues.map(function(issue, index) {
+    return '<tr>' +
+      '<td class="col-checkbox" style="text-align:center"><input type="checkbox" class="issue-checkbox" data-index="' + index + '" onchange="updateSelectAll()"></td>' +
+      '<td class="col-title"><div class="cell-text" contenteditable="true" data-field="title" data-index="' + index + '" onblur="editCell(this)">' + escHtml(issue.title) + '</div></td>' +
+      '<td class="col-desc"><div class="cell-text" contenteditable="true" data-field="description" data-index="' + index + '" onblur="editCell(this)">' + escHtml(issue.description) + '</div></td>' +
+      '<td class="col-assignee"><div class="cell-text" contenteditable="true" data-field="assignee" data-index="' + index + '" onblur="editCell(this)">' + escHtml(issue.assignee) + '</div></td>' +
+      '<td class="col-deadline"><div class="cell-text" contenteditable="true" data-field="deadline" data-index="' + index + '" onblur="editCell(this)">' + escHtml(issue.deadline) + '</div></td>' +
+      '<td class="col-actions" style="text-align:center"><button class="btn-icon" onclick="deleteIssue(' + index + ')" title="删除"><i data-lucide="x" style="width:16px;height:16px;"></i></button></td>' +
+      '</tr>';
+  }).join('');
+
+  lucide.createIcons();
+}
+
+function escHtml(text) {
+  var d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+function editCell(el) {
+  var idx = parseInt(el.dataset.index);
+  var field = el.dataset.field;
+  var val = el.textContent.trim();
+  if (issues[idx][field] !== val) {
+    issues[idx][field] = val || '待填写';
+    saveData();
   }
 }
 
-name = "issue-refiner"
-main = "src/index.js"
-compatibility_date = "2025-01-01"
-
-[[kv_namespaces]]
-binding = "ISSUE_KV"
-id = "YOUR_KV_NAMESPACE_ID"
-preview_id = "YOUR_KV_NAMESPACE_PREVIEW_ID"
-
-[env.production]
-vars = { AI_API_BASE = "https://api.openai.com/v1" }
-const MAX_DAILY_TOKENS = 1000000;
-
-export default {
-  async fetch(request, env, ctx) {
-    // CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
-    }
-
-    if (request.method !== 'POST') {
-      return jsonResponse({ error: 'Method not allowed' }, 405);
-    }
-
-    const url = new URL(request.url);
-    if (url.pathname !== '/api/refine') {
-      return jsonResponse({ error: 'Not found' }, 404);
-    }
-
-    try {
-      const { description, model, api_base } = await request.json();
-      if (!description || description.trim().length === 0) {
-        return jsonResponse({ error: 'Description is required' }, 400);
-      }
-
-      // Check daily token usage
-      const today = new Date().toISOString().slice(0, 10);
-      const usageKey = usage:;
-      const currentUsage = parseInt((await env.ISSUE_KV.get(usageKey)) || '0', 10);
-
-      if (currentUsage >= MAX_DAILY_TOKENS) {
-        return jsonResponse({
-          error: '每日 Token 用量已达上限 (100 万)',
-          code: 'RATE_LIMIT_EXCEEDED',
-          dailyLimit: MAX_DAILY_TOKENS,
-        }, 429);
-      }
-
-      // Call AI API
-      const apiKey = env.AI_API_KEY;
-      const baseUrl = api_base || 'https://api.openai.com/v1';
-
-      const systemPrompt = 你是一个专业的 Issue 管理员。根据用户描述，提取以下信息并以 JSON 格式返回。如果描述中未提及某些信息，请合理推断或填写默认值。仅返回 JSON，不要有其他内容：
-{
-  "title": "简短的 Issue 标题（10-20字）",
-  "description": "专业、清晰的问题描述（30-80字），包含问题现象和影响",
-  "assignee": "负责处理此问题的人员姓名，如果描述中未提及则填“待分配”",
-  "deadline": "解决方案的截止日期，格式为 YYYY-MM-DD，如果描述中未提及则填“待确定”"
-};
-
-      const response = await fetch(${baseUrl}/chat/completions, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': Bearer ,
-        },
-        body: JSON.stringify({
-          model: model || 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: description },
-          ],
-          temperature: 0.3,
-          response_format: { type: 'json_object' },
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return jsonResponse({
-          error: 'AI API 调用失败',
-          status: response.status,
-          detail: errorText,
-        }, response.status);
-      }
-
-      const data = await response.json();
-      const usage = data.usage;
-      let result;
-
-      try {
-        result = JSON.parse(data.choices[0].message.content);
-      } catch {
-        result = {
-          title: '解析失败',
-          description: 'AI 返回格式异常，请重试',
-          assignee: '待分配',
-          deadline: '待确定',
-        };
-      }
-
-      // Ensure all fields exist
-      result.title = result.title || '未命名 Issue';
-      result.description = result.description || description;
-      result.assignee = result.assignee || '待分配';
-      result.deadline = result.deadline || '待确定';
-
-      // Record token usage
-      if (usage && usage.total_tokens) {
-        const newUsage = currentUsage + usage.total_tokens;
-        await env.ISSUE_KV.put(usageKey, String(newUsage));
-        result._tokens_used = usage.total_tokens;
-        result._daily_tokens = newUsage;
-        result._daily_limit = MAX_DAILY_TOKENS;
-      }
-
-      return jsonResponse(result);
-    } catch (err) {
-      return jsonResponse({ error: '服务器内部错误', detail: err.message }, 500);
-    }
-  },
-};
-
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
+function deleteIssue(idx) {
+  if (!confirm('确定删除这条 issue 吗？')) return;
+  issues.splice(idx, 1);
+  saveData();
+  renderTable();
 }
+
+// ====== Select & Batch ======
+function toggleSelectAll() {
+  var checked = document.getElementById('selectAll').checked;
+  document.querySelectorAll('.issue-checkbox').forEach(function(cb) { cb.checked = checked; });
+  updateBatchBtn();
+}
+
+function updateSelectAll() {
+  var cbs = document.querySelectorAll('.issue-checkbox');
+  var all = true;
+  cbs.forEach(function(cb) { if (!cb.checked) all = false; });
+  document.getElementById('selectAll').checked = all && cbs.length > 0;
+  updateBatchBtn();
+}
+
+function updateBatchBtn() {
+  var count = document.querySelectorAll('.issue-checkbox:checked').length;
+  document.getElementById('batchDeleteBtn').disabled = count === 0;
+}
+
+function batchDelete() {
+  var cbs = document.querySelectorAll('.issue-checkbox:checked');
+  if (cbs.length === 0) return;
+  if (!confirm('确定删除选中的 ' + cbs.length + ' 条 issue 吗？')) return;
+  var idxs = [];
+  cbs.forEach(function(cb) { idxs.push(parseInt(cb.dataset.index)); });
+  idxs.sort(function(a,b) { return b - a; });
+  idxs.forEach(function(i) { issues.splice(i, 1); });
+  saveData();
+  renderTable();
+  showToast('已删除 ' + idxs.length + ' 条 issue');
+}// ====== Export CSV ======
+function exportCSV() {
+  if (issues.length === 0) { showToast('没有数据可导出'); return; }
+  var BOM = '\uFEFF';
+  var rows = ['标题,专业描述,负责人,截止时间'];
+  issues.forEach(function(issue) {
+    var row = [
+      '"' + issue.title.replace(/"/g, '""') + '"',
+      '"' + issue.description.replace(/"/g, '""') + '"',
+      '"' + issue.assignee.replace(/"/g, '""') + '"',
+      '"' + issue.deadline.replace(/"/g, '""') + '"',
+    ].join(',');
+    rows.push(row);
+  });
+  var csv = BOM + rows.join('\r\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  var link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'issues-' + new Date().toISOString().slice(0,10) + '.csv';
+  link.click();
+  URL.revokeObjectURL(link.href);
+  showToast('CSV 已下载');
+}
+
+// ====== Clear All ======
+function clearAll() {
+  if (issues.length === 0) return;
+  if (!confirm('确定清空所有 ' + issues.length + ' 条 issue 吗？此操作不可撤销。')) return;
+  issues = [];
+  saveData();
+  renderTable();
+  showToast('已清空所有 issue');
+}
+
+// ====== Toast ======
+function showToast(msg) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(function() { t.classList.remove('show'); }, 2500);
+}
+
+// ====== Init ======
+loadData();
+renderTable();
+lucide.createIcons();
+</script>
+</body>
+</html>
