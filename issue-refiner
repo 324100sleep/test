@@ -1,0 +1,151 @@
+{
+  "name": "issue-refiner-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
+
+name = "issue-refiner"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[[kv_namespaces]]
+binding = "ISSUE_KV"
+id = "YOUR_KV_NAMESPACE_ID"
+preview_id = "YOUR_KV_NAMESPACE_PREVIEW_ID"
+
+[env.production]
+vars = { AI_API_BASE = "https://api.openai.com/v1" }
+const MAX_DAILY_TOKENS = 1000000;
+
+export default {
+  async fetch(request, env, ctx) {
+    // CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, {
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+        },
+      });
+    }
+
+    if (request.method !== 'POST') {
+      return jsonResponse({ error: 'Method not allowed' }, 405);
+    }
+
+    const url = new URL(request.url);
+    if (url.pathname !== '/api/refine') {
+      return jsonResponse({ error: 'Not found' }, 404);
+    }
+
+    try {
+      const { description, model, api_base } = await request.json();
+      if (!description || description.trim().length === 0) {
+        return jsonResponse({ error: 'Description is required' }, 400);
+      }
+
+      // Check daily token usage
+      const today = new Date().toISOString().slice(0, 10);
+      const usageKey = usage:;
+      const currentUsage = parseInt((await env.ISSUE_KV.get(usageKey)) || '0', 10);
+
+      if (currentUsage >= MAX_DAILY_TOKENS) {
+        return jsonResponse({
+          error: '每日 Token 用量已达上限 (100 万)',
+          code: 'RATE_LIMIT_EXCEEDED',
+          dailyLimit: MAX_DAILY_TOKENS,
+        }, 429);
+      }
+
+      // Call AI API
+      const apiKey = env.AI_API_KEY;
+      const baseUrl = api_base || 'https://api.openai.com/v1';
+
+      const systemPrompt = 你是一个专业的 Issue 管理员。根据用户描述，提取以下信息并以 JSON 格式返回。如果描述中未提及某些信息，请合理推断或填写默认值。仅返回 JSON，不要有其他内容：
+{
+  "title": "简短的 Issue 标题（10-20字）",
+  "description": "专业、清晰的问题描述（30-80字），包含问题现象和影响",
+  "assignee": "负责处理此问题的人员姓名，如果描述中未提及则填“待分配”",
+  "deadline": "解决方案的截止日期，格式为 YYYY-MM-DD，如果描述中未提及则填“待确定”"
+};
+
+      const response = await fetch(${baseUrl}/chat/completions, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': Bearer ,
+        },
+        body: JSON.stringify({
+          model: model || 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: description },
+          ],
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return jsonResponse({
+          error: 'AI API 调用失败',
+          status: response.status,
+          detail: errorText,
+        }, response.status);
+      }
+
+      const data = await response.json();
+      const usage = data.usage;
+      let result;
+
+      try {
+        result = JSON.parse(data.choices[0].message.content);
+      } catch {
+        result = {
+          title: '解析失败',
+          description: 'AI 返回格式异常，请重试',
+          assignee: '待分配',
+          deadline: '待确定',
+        };
+      }
+
+      // Ensure all fields exist
+      result.title = result.title || '未命名 Issue';
+      result.description = result.description || description;
+      result.assignee = result.assignee || '待分配';
+      result.deadline = result.deadline || '待确定';
+
+      // Record token usage
+      if (usage && usage.total_tokens) {
+        const newUsage = currentUsage + usage.total_tokens;
+        await env.ISSUE_KV.put(usageKey, String(newUsage));
+        result._tokens_used = usage.total_tokens;
+        result._daily_tokens = newUsage;
+        result._daily_limit = MAX_DAILY_TOKENS;
+      }
+
+      return jsonResponse(result);
+    } catch (err) {
+      return jsonResponse({ error: '服务器内部错误', detail: err.message }, 500);
+    }
+  },
+};
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
